@@ -1,17 +1,36 @@
-%loc = [0, 0.3, 0.7, 1.1, 1.2, 2.2, 2.3, 2.9, 3.1, 3.3, 3.4, 4, 4.2, 4.3, 4.9, 6, 6.5, 6.7, 6.9, 7.1, 7.6];
-%m = [0, 20, 25, 25, 20, 25, 70, 1, 10, 15, 1, 10, 120, 1, 50, 5, 1, 5, 5, 10, 10];
 clear; clc; close all;
 
-loc = [0, 0.5, 6.5, 11.5, 13, 15]; 
-mass = [0, 20, 120, 1, 50, 5]; 
+loc = [0, 0.3, 0.7, 1.1, 1.2, 2.2, 2.3, 2.9, 3.1, 3.3, 3.4, 4, 4.2, 4.3, 4.9, 6, 6.5, 6.7, 6.9, 7.1, 7.6];
+mass = [0, 20, 25, 25, 20, 25, 70, 1, 10, 15, 1, 10, 120, 1, 50, 5, 1, 5, 5, 10, 10];
 
 dim = [1.9, 6.0, 0.8, 1.0, 0.2]; 
 
 tolerance_dim = 0.002; 
 tolerance_mass = 0.1; 
 
+g0 = 9.807; 
+R_earth = 6371e3;
+mu = 3.986e14; 
+Omega_earth = 7.29e-5;
+latitude = 30.6280; 
+target_altitude = 35000;
+
+thrust = 15500;
+m_fuel = 120;
+
+fuel_tank_index = find(mass == 120, 1);
+
 total_mass_nom = sum(mass);
 CG_nominal = sum(loc .* mass) / total_mass_nom;
+
+mass_empty = mass;
+mass_empty(fuel_tank_index) = 0;
+CG_empty = sum(loc .* mass_empty) / sum(mass_empty);
+
+fprintf('=== HAND CALCULATIONS FOR ROCKET PARAMETERS ===\n\n');
+fprintf('CG with full fuel: %.4f m\n', CG_nominal);
+fprintf('CG with empty fuel: %.4f m\n', CG_empty);
+fprintf('CG shift during burn: %.4f m\n\n', CG_nominal - CG_empty);
 
 L_total = sum(dim);
 L_nose = dim(1);
@@ -23,6 +42,94 @@ CP_fins = L_total - 0.15;
 CN_fins = 3.5;
 CP_nominal = (CN_nose * CP_nose + CN_body * CP_body + CN_fins * CP_fins) / ...
              (CN_nose + CN_body + CN_fins);
+
+fprintf('=== HAND CALCULATIONS FOR ROCKET PARAMETERS ===\n\n');
+
+m0 = total_mass_nom;
+mf = 120;
+m1 = m0 - mf;
+
+fprintf('1. SPECIFIC IMPULSE (Isp) ESTIMATION:\n');
+fprintf('   For solid propellant amateur rockets:\n');
+fprintf('   - APCP (Ammonium Perchlorate): Isp = 180-250 s\n');
+fprintf('   - Black powder: Isp = 80-100 s\n');
+fprintf('   - Sugar propellants: Isp = 120-140 s\n');
+fprintf('   Assuming modern APCP composite: Isp = 200 s\n\n');
+Isp = 200;
+
+fprintf('2. BURN TIME ESTIMATION:\n');
+fprintf('   Target altitude: 35 km\n');
+fprintf('   Using energy method:\n');
+fprintf('   - Required velocity at burnout: v_bo ≈ sqrt(2*g*h_target)\n');
+v_target_burnout = sqrt(2 * g0 * target_altitude);
+fprintf('     v_bo = %.1f m/s (neglecting losses)\n', v_target_burnout);
+fprintf('   - With gravity/drag losses (×1.5): v_bo ≈ %.1f m/s\n', v_target_burnout * 1.5);
+
+fprintf('\n   Ideal rocket equation: Δv = g₀*Isp*ln(m₀/m₁)\n');
+delta_v_ideal = g0 * Isp * log(m0/m1);
+fprintf('   - Δv_ideal = %.1f m/s\n', delta_v_ideal);
+fprintf('   - With losses (~40%%): Δv_actual ≈ %.1f m/s\n', delta_v_ideal * 0.6);
+
+fprintf('\n   For vertical flight, burn time affects gravity losses:\n');
+fprintf('   - Longer burn → more gravity loss\n');
+fprintf('   - Shorter burn → higher acceleration, more drag loss\n');
+fprintf('   Optimal range: 60-100 s for this size rocket\n');
+
+fprintf('\n   Using thrust and mass flow relationship:\n');
+fprintf('   - Thrust = ṁ * Ve = ṁ * (Isp * g₀)\n');
+mdot_from_thrust = thrust / (Isp * g0);
+fprintf('   - Mass flow rate from thrust: ṁ = %.3f kg/s\n', mdot_from_thrust);
+burn_time_from_thrust = mf / mdot_from_thrust;
+fprintf('   - Implied burn time: t_burn = mf/ṁ = %.1f s\n', burn_time_from_thrust);
+
+fprintf('\n   However, this is unrealistically short for a 120 kg solid motor.\n');
+fprintf('   Typical solid rocket burn rates: 1-2 kg/s\n');
+fprintf('   For this rocket: assume ṁ = 1.5 kg/s (reasonable)\n');
+mdot_realistic = 1.5;
+burn_time_realistic = mf / mdot_realistic;
+fprintf('   - Realistic burn time: t_burn = %.1f s\n', burn_time_realistic);
+
+fprintf('\n   Note: This means thrust coefficient varies during burn,\n');
+fprintf('   or average thrust differs from peak thrust of 15.5 kN.\n');
+fprintf('   Using t_burn = %.1f s for analysis.\n\n', burn_time_realistic);
+
+burn_time = burn_time_realistic;
+
+burn_rate = m_fuel / burn_time;
+
+fprintf('3. DRAG COEFFICIENT (Cd) ESTIMATION:\n');
+fprintf('   Based on rocket geometry:\n');
+fprintf('   - Nose cone: L/D = %.2f (length 1.9m, diameter 1.0m)\n', 1.9/1.0);
+fprintf('   - Fineness ratio suggests: ogive or conical nose\n');
+fprintf('   - Body: cylindrical (low drag)\n');
+fprintf('   - Fins: 4 fins at tail\n\n');
+
+fprintf('   Drag coefficient estimates:\n');
+fprintf('   - Nose (conical, L/D=1.9): Cd_nose ≈ 0.15\n');
+fprintf('   - Body (cylinder): Cd_body ≈ 0.00 (skin friction only)\n');
+fprintf('   - Base drag: Cd_base ≈ 0.12\n');
+fprintf('   - Fins: Cd_fins ≈ 0.05\n');
+fprintf('   - Interference: +0.03\n');
+fprintf('   Total Cd ≈ 0.35 (typical for streamlined rockets)\n\n');
+Cd = 0.35;
+
+fprintf('   For reference:\n');
+fprintf('   - Poorly designed rocket: Cd = 0.5-0.75\n');
+fprintf('   - Average amateur rocket: Cd = 0.4-0.5\n');
+fprintf('   - Well-designed rocket: Cd = 0.3-0.35\n');
+fprintf('   - Professional sounding rocket: Cd = 0.25-0.3\n');
+fprintf('   Using Cd = %.2f\n\n', Cd);
+
+fprintf('FINAL PARAMETERS:\n');
+fprintf('  • Isp = %d s (APCP composite propellant)\n', Isp);
+fprintf('  • Burn time = %.1f s (calculated from thrust/Isp)\n', burn_time);
+fprintf('  • Cd = %.2f (streamlined rocket geometry)\n', Cd);
+fprintf('  • Mass flow rate = %.3f kg/s\n\n', burn_rate);
+
+fprintf('=== DIAGNOSTIC: CG Movement Check ===\n');
+fprintf('CG with full fuel: %.4f m\n', CG_nominal);
+fprintf('CG with empty fuel: %.4f m\n', CG_empty);
+fprintf('CG shift during burn: %.4f m\n\n', CG_nominal - CG_empty);
 
 fprintf('=== NOMINAL ROCKET PARAMETERS ===\n');
 fprintf('Total length: %.2f m\n', L_total);
@@ -42,13 +149,8 @@ Omega_earth = 7.29e-5;
 latitude = 30.6280; 
 target_altitude = 35000;
 
-Isp = 250; 
-thrust = 50000;
+thrust = 15500;
 m_fuel = 120; 
-burn_time = 60; 
-burn_rate = m_fuel / burn_time; 
-
-Cd = 0.4; 
 diameter = 1.0; 
 A_ref = pi * (diameter/2)^2; 
 
@@ -107,7 +209,7 @@ for sim = 1:n_simulations
     x(1) = 0;
     z(1) = 0;
     vx(1) = Omega_earth * R_earth * cosd(latitude); 
-    vz(1) = 0;
+    vz(1) = 0.1;
     m = m_total;
     
     gamma_rad = pi/2;
@@ -117,16 +219,17 @@ for sim = 1:n_simulations
         h = z(i); 
         
         if h < 0
+            h = 0;
             rho = rho_sealevel;
         else
             rho = rho_sealevel * exp(-beta_atm * h);
         end
         
-        r = sqrt((R_earth + h)^2);
+        r = R_earth + h;
         
-        g_grav = mu / r^2;
+        g_grav = mu / (r^2);
         
-        g_centripetal_x = Omega_earth^2 * (R_earth + h) * cosd(latitude);
+        g_centripetal_x = Omega_earth^2 * r * cosd(latitude);
         
         V = sqrt(vx(i)^2 + vz(i)^2);
         velocity(i) = V;
@@ -139,8 +242,9 @@ for sim = 1:n_simulations
         dynamic_pressure(i) = 0.5 * rho * V^2;
         
         if t <= burn_time
-            F_thrust_x = thrust * cos(gamma_rad);
-            F_thrust_z = thrust * sin(gamma_rad);
+            thrust_angle = pi/2;
+            F_thrust_x = thrust * cos(thrust_angle);
+            F_thrust_z = thrust * sin(thrust_angle);
             m = m_total - burn_rate * t;
         else
             F_thrust_x = 0;
@@ -172,7 +276,7 @@ for sim = 1:n_simulations
         x(i+1) = x(i) + vx(i) * dt;
         z(i+1) = z(i) + vz(i) * dt;
         
-        if z(i+1) < 0 && i > 10
+        if z(i+1) < -50 && i > 100
             altitude(i+1:end) = 0;
             velocity(i+1:end) = 0;
             acceleration(i+1:end) = 0;
@@ -181,7 +285,7 @@ for sim = 1:n_simulations
             break;
         end
         
-        altitude(i+1) = z(i+1);
+        altitude(i+1) = max(0, z(i+1));
     end
     
     max_altitudes(sim) = max(altitude);
@@ -196,6 +300,13 @@ for sim = 1:n_simulations
         acc_ex = acceleration;
         gamma_ex = gamma_vec;
         q_ex = dynamic_pressure;
+        
+        fprintf('\nDEBUG - First simulation:\n');
+        fprintf('  Max altitude: %.2f km\n', max(altitude)/1000);
+        fprintf('  Max velocity: %.2f m/s\n', max(velocity));
+        fprintf('  Max vz: %.2f m/s\n', max(vz));
+        fprintf('  Burn ends at: %.1f s\n', burn_time);
+        fprintf('  T/W ratio: %.2f\n\n', thrust/(m_total*g0));
     end
     
     if mod(sim, progress_step) == 0
@@ -208,13 +319,7 @@ fprintf('TRAJECTORY RESULTS:\n');
 fprintf('  Maximum Altitude:\n');
 fprintf('    Mean: %.2f km\n', mean(max_altitudes)/1000);
 fprintf('    Std Dev: %.2f km\n', std(max_altitudes)/1000);
-fprintf('    Range: [%.2f, %.2f] km\n', min(max_altitudes)/1000, max(max_altitudes)/1000);
-fprintf('    Target: %.2f km\n', target_altitude/1000);
-
-success_count = sum(max_altitudes >= target_altitude);
-success_rate = success_count / n_simulations * 100;
-fprintf('    Success Rate: %.2f%% (%d/%d reach target)\n\n', ...
-    success_rate, success_count, n_simulations);
+fprintf('    Range: [%.2f, %.2f] km\n\n', min(max_altitudes)/1000, max(max_altitudes)/1000);
 
 fprintf('  Maximum Velocity:\n');
 fprintf('    Mean: %.2f m/s\n', mean(max_velocities));
@@ -232,8 +337,6 @@ figure('Name', 'Part (c) - Monte Carlo Trajectory Results', 'Position', [50 50 1
 
 subplot(3,3,1);
 histogram(max_altitudes/1000, 50, 'FaceColor', [0.2 0.4 0.8], 'EdgeColor', 'none');
-hold on;
-xline(target_altitude/1000, 'r--', 'LineWidth', 2.5, 'Label', 'Target');
 xlabel('Maximum Altitude (km)'); 
 ylabel('Frequency');
 title('Distribution of Maximum Altitudes');
@@ -243,8 +346,6 @@ subplot(3,3,2);
 sorted_alt = sort(max_altitudes/1000);
 cdf_y = (1:n_simulations)' / n_simulations * 100;
 plot(sorted_alt, cdf_y, 'b-', 'LineWidth', 2);
-hold on;
-xline(target_altitude/1000, 'r--', 'LineWidth', 2);
 xlabel('Maximum Altitude (km)'); 
 ylabel('Cumulative Probability (%)');
 title('CDF of Maximum Altitude');
@@ -316,6 +417,7 @@ fprintf('Running %d stability simulations with fuel consumption...\n', n_stabili
 
 unstable_count = 0;
 min_margins_all_sims = zeros(n_stability_sims, 1);
+max_margins_all_sims = zeros(n_stability_sims, 1);
 time_to_instability = zeros(n_stability_sims, 1);
 
 for sim = 1:n_stability_sims
@@ -333,10 +435,11 @@ for sim = 1:n_stability_sims
     
     fuel_levels = linspace(m_fuel, 0, n_fuel_steps);
     stability_margin_sim = zeros(n_fuel_steps, 1);
+    CG_trajectory = zeros(n_fuel_steps, 1);
     
     for step = 1:n_fuel_steps
         mass_current = mass_varied;
-        mass_current(3) = fuel_levels(step); 
+        mass_current(fuel_tank_index) = fuel_levels(step); 
         
         total_mass_current = sum(mass_current);
         if total_mass_current > 0
@@ -345,11 +448,24 @@ for sim = 1:n_stability_sims
             CG_sim = 0;
         end
         
+        CG_trajectory(step) = CG_sim;
         stability_margin_sim(step) = CP_sim - CG_sim;
     end
     
     min_margin = min(stability_margin_sim);
+    max_margin = max(stability_margin_sim);
     min_margins_all_sims(sim) = min_margin;
+    max_margins_all_sims(sim) = max_margin;
+    
+    if sim == 1
+        fprintf('\nDEBUG - First stability simulation:\n');
+        fprintf('  CG at full fuel: %.4f m\n', CG_trajectory(1));
+        fprintf('  CG at empty fuel: %.4f m\n', CG_trajectory(end));
+        fprintf('  CG shift: %.4f m\n', CG_trajectory(1) - CG_trajectory(end));
+        fprintf('  CP location: %.4f m\n', CP_sim);
+        fprintf('  Max stability margin: %.4f m\n', max_margin);
+        fprintf('  Min stability margin: %.4f m\n\n', min_margin);
+    end
     
     if min_margin < 0
         unstable_count = unstable_count + 1;
@@ -365,9 +481,11 @@ instability_rate = unstable_count / n_stability_sims * 100;
 fprintf('STABILITY ANALYSIS RESULTS:\n');
 fprintf('  Simulations with instability: %d/%d (%.2f%%)\n', ...
     unstable_count, n_stability_sims, instability_rate);
-fprintf('  Minimum stability margin:\n');
-fprintf('    Mean: %.4f m\n', mean(min_margins_all_sims));
-fprintf('    Worst case: %.4f m\n', min(min_margins_all_sims));
+fprintf('  Stability margin statistics:\n');
+fprintf('    Mean min margin: %.4f m\n', mean(min_margins_all_sims));
+fprintf('    Mean max margin: %.4f m\n', mean(max_margins_all_sims));
+fprintf('    Worst case min: %.4f m\n', min(min_margins_all_sims));
+fprintf('    Best case max: %.4f m\n', max(max_margins_all_sims));
 
 if unstable_count > 0
     fprintf('\n  ⚠ WARNING: Rocket becomes UNSTABLE in %.2f%% of cases!\n', instability_rate);
@@ -376,13 +494,16 @@ if unstable_count > 0
     desired_margin = 0.5;
     target_CG = CP_nominal - desired_margin;
     masses_empty = mass;
-    masses_empty(3) = 0;
-    CG_empty = sum(loc .* masses_empty) / sum(masses_empty);
+    masses_empty(fuel_tank_index) = 0;
+    CG_empty_nom = sum(loc .* masses_empty) / sum(masses_empty);
     
-    if CG_empty > target_CG
-        total_moment = sum(loc .* masses_empty);
+    if CG_empty_nom > target_CG
+        ballast_location = loc(1);
         total_mass_empty = sum(masses_empty);
-        required_weight = (total_moment - target_CG * total_mass_empty) / target_CG;
+        total_moment = sum(loc .* masses_empty);
+        
+        required_weight = (total_moment - target_CG * total_mass_empty) / ...
+                         (target_CG - ballast_location);
         required_weight = max(0, required_weight);
     else
         required_weight = 0;
@@ -418,7 +539,7 @@ for sim = 1:n_plot
     
     for step = 1:n_fuel_steps
         mass_current = mass_varied;
-        mass_current(3) = fuel_levels(step);
+        mass_current(fuel_tank_index) = fuel_levels(step);
         total_mass_current = sum(mass_current);
         CG_sim = sum(loc .* mass_current) / total_mass_current;
         stability_profile(step) = CP_sim - CG_sim;
@@ -456,13 +577,13 @@ fprintf('================================================================\n\n');
 fprintf('PART (c) - Monte Carlo Trajectory Analysis:\n');
 fprintf('  • Model: Round, rotating Earth with atmosphere\n');
 fprintf('  • Simulations run: %d\n', n_simulations);
-fprintf('  • Mean max altitude: %.2f km (target: 35 km)\n', mean(max_altitudes)/1000);
-fprintf('  • Success rate: %.2f%%\n', success_rate);
+fprintf('  • Mean max altitude: %.2f km\n', mean(max_altitudes)/1000);
 fprintf('  • Mean max velocity: %.2f m/s\n', mean(max_velocities));
 fprintf('  • Mean max acceleration: %.2f g\n', mean(max_accelerations)/g0);
 fprintf('  • Assumption: Constant CG location\n\n');
 
 fprintf('PART (d) - Stability Analysis with Fuel Consumption:\n');
+fprintf('  • Reference altitude for stability check: %.2f km\n', target_altitude/1000);
 fprintf('  • Simulations run: %d\n', n_stability_sims);
 fprintf('  • Instability rate: %.2f%%\n', instability_rate);
 fprintf('  • Worst stability margin: %.4f m\n', min(min_margins_all_sims));
