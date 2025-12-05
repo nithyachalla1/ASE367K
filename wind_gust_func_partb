@@ -1,0 +1,62 @@
+function [ug, vg, wg] = wind_turb(alt, sigma_gust, vel, dt, t_max)
+    %alt units in meter
+    time_vec = 0:dt:t_max;
+    n_time = length(time_vec);
+    ug = zeros(n_time, 1);
+    vg = zeros(n_time, 1);
+    wg = zeros(n_time, 1);
+    alt = alt/0.3048; %meter to feet
+    vel = vel/0.3048; %m/s to ft/s
+    for i = 1:n_time-1
+        if i == 1
+            h = 1e-12; %removes divide by zero error
+        else
+            h = alt(i);
+        end
+        v = vel(i);
+        if h <= 1000
+            Lw = h;
+            Lu = h / (0.177 + 0.000823*h)^1.2;
+            Lv = Lu;
+            sigmaw = sigma_gust;
+            sigmau = sigma_gust / (0.177 + 0.000823*h)^0.4;
+            sigmav = sigmau;
+        elseif h >= 2000
+            Lw = 1750;
+            Lu = Lw;
+            Lv = Lw;
+            sigmaw = sigma_gust;
+            sigmau = sigmaw;
+            sigmav = sigmau;
+        elseif h > 1000 && h < 2000
+            h1 = 1000;
+            Lw1     = h1;
+            Lu1     = h1 / (0.177 + 0.000823*h1)^1.2;
+            Lv1     = Lu1;
+            sigmaw1 = sigma_gust;
+            sigmau1 = sigma_gust / (0.177 + 0.000823*h1)^0.4;
+            sigmav1 = sigmau1;
+            h2 = 2000;
+            Lw2     = 1750;
+            Lu2     = 1750;
+            Lv2     = 1750;        
+            sigmaw2 = sigma_gust;
+            sigmau2 = sigma_gust;
+            sigmav2 = sigma_gust;
+            slope = (h - h1) / (h2 - h1);   % ranges from 0 to 1
+        
+            Lw = Lw1 + slope*(Lw2 - Lw1);
+            Lu = Lu1 + slope*(Lu2 - Lu1);
+            Lv = Lv1 + slope*(Lv2 - Lv1);
+        
+            sigmaw = sigmaw1 + slope*(sigmaw2 - sigmaw1);
+            sigmau = sigmau1 + slope*(sigmau2 - sigmau1);
+            sigmav = sigmav1 + slope*(sigmav2 - sigmav1);
+        else
+            warning('Height is not in range for wind model');
+        end
+        ug(i+1) = (1 - v*dt/Lu)*ug(i) + sigmau * sqrt(2*v*dt/Lu) * randn;
+        vg(i+1) = (1 - v*dt/Lv)*vg(i) + sigmav * sqrt(2*v*dt/Lv) * randn;
+        wg(i+1) = (1 - v*dt/Lw)*wg(i) + sigmaw * sqrt(2*v*dt/Lw) * randn;
+    end
+end
