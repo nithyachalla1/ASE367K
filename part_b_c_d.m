@@ -138,7 +138,7 @@ fprintf('CG location: %.4f m from nose\n', CG_nominal);
 fprintf('CP location: %.4f m from nose\n', CP_nominal);
 fprintf('Static stability margin: %.4f m\n\n', CP_nominal - CG_nominal);
 
-fprintf('=== PART (c): Monte Carlo Trajectory Simulation Model ===\n');
+fprintf('=== PART (b): Wind Gust using Altitude Input ===\n');
 function [ug, vg, wg] = wind_turb(alt, sigma_gust, vel, dt, t_max)
     %alt units in meter
     time_vec = 0:dt:t_max;
@@ -688,4 +688,5 @@ if unstable_count > 0
 else
     fprintf('  • STATUS: ✓ STABLE - No action needed\n');
 end
+
 fprintf('\n================================================================\n');
