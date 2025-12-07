@@ -138,68 +138,66 @@ fprintf('CG location: %.4f m from nose\n', CG_nominal);
 fprintf('CP location: %.4f m from nose\n', CP_nominal);
 fprintf('Static stability margin: %.4f m\n\n', CP_nominal - CG_nominal);
 
-fprintf('=== PART (b): Wind Gust using Altitude Input ===\n');
-function [ug, vg, wg] = wind_turb(alt, sigma_gust, vel, dt, t_max)
+fprintf('=== PART (b): Wind Turbulence with Altitude Input ===\n');
+function [ug, vg, wg] = wind_turb(alt, sigma_gust, vel, ug0, vg0, wg0, dt)
     %alt units in meter
-    time_vec = 0:dt:t_max;
-    n_time = length(time_vec);
-    ug = zeros(n_time, 1);
-    vg = zeros(n_time, 1);
-    wg = zeros(n_time, 1);
     alt = alt/0.3048; %meter to feet
     vel = vel/0.3048; %m/s to ft/s
-    for i = 1:n_time-1
-        if i == 1
-            h = 1e-12; %removes divide by zero error
+    
+    v = vel;
+    h = alt;
+
+    %stability = v*dt / L;
+
+    if h <= 1000
+        if h < 25
+            %removes divide by zero error
+            Lw = 15; h = 15; % feet
         else
-            h = alt(i);
-        end
-        v = vel(i);
-        if h <= 1000
             Lw = h;
-            Lu = h / (0.177 + 0.000823*h)^1.2;
-            Lv = Lu;
-            sigmaw = sigma_gust;
-            sigmau = sigma_gust / (0.177 + 0.000823*h)^0.4;
-            sigmav = sigmau;
-        elseif h >= 2000
-            Lw = 1750;
-            Lu = Lw;
-            Lv = Lw;
-            sigmaw = sigma_gust;
-            sigmau = sigmaw;
-            sigmav = sigmau;
-        elseif h > 1000 && h < 2000
-            h1 = 1000;
-            Lw1     = h1;
-            Lu1     = h1 / (0.177 + 0.000823*h1)^1.2;
-            Lv1     = Lu1;
-            sigmaw1 = sigma_gust;
-            sigmau1 = sigma_gust / (0.177 + 0.000823*h1)^0.4;
-            sigmav1 = sigmau1;
-            h2 = 2000;
-            Lw2     = 1750;
-            Lu2     = 1750;
-            Lv2     = 1750;        
-            sigmaw2 = sigma_gust;
-            sigmau2 = sigma_gust;
-            sigmav2 = sigma_gust;
-            slope = (h - h1) / (h2 - h1);   % ranges from 0 to 1
-        
-            Lw = Lw1 + slope*(Lw2 - Lw1);
-            Lu = Lu1 + slope*(Lu2 - Lu1);
-            Lv = Lv1 + slope*(Lv2 - Lv1);
-        
-            sigmaw = sigmaw1 + slope*(sigmaw2 - sigmaw1);
-            sigmau = sigmau1 + slope*(sigmau2 - sigmau1);
-            sigmav = sigmav1 + slope*(sigmav2 - sigmav1);
-        else
-            warning('Height is not in range for wind model');
         end
-        ug(i+1) = (1 - v*dt/Lu)*ug(i) + sigmau * sqrt(2*v*dt/Lu) * randn;
-        vg(i+1) = (1 - v*dt/Lv)*vg(i) + sigmav * sqrt(2*v*dt/Lv) * randn;
-        wg(i+1) = (1 - v*dt/Lw)*wg(i) + sigmaw * sqrt(2*v*dt/Lw) * randn;
+        Lu = h / (0.177 + 0.000823*h)^1.2;
+        Lv = Lu;
+        sigmaw = sigma_gust;
+        sigmau = sigma_gust / (0.177 + 0.000823*h)^0.4;
+        sigmav = sigmau;
+    elseif h >= 2000
+        Lw = 1750;
+        Lu = Lw;
+        Lv = Lw;
+        sigmaw = sigma_gust;
+        sigmau = sigmaw;
+        sigmav = sigmau;
+    elseif h > 1000 && h < 2000
+        h1 = 1000;
+        Lw1     = h1;
+        Lu1     = h1 / (0.177 + 0.000823*h1)^1.2;
+        Lv1     = Lu1;
+        sigmaw1 = sigma_gust;
+        sigmau1 = sigma_gust / (0.177 + 0.000823*h1)^0.4;
+        sigmav1 = sigmau1;
+        h2 = 2000;
+        Lw2     = 1750;
+        Lu2     = 1750;
+        Lv2     = 1750;        
+        sigmaw2 = sigma_gust;
+        sigmau2 = sigma_gust;
+        sigmav2 = sigma_gust;
+        slope = (h - h1) / (h2 - h1);   % ranges from 0 to 1
+    
+        Lw = Lw1 + slope*(Lw2 - Lw1);
+        Lu = Lu1 + slope*(Lu2 - Lu1);
+        Lv = Lv1 + slope*(Lv2 - Lv1);
+    
+        sigmaw = sigmaw1 + slope*(sigmaw2 - sigmaw1);
+        sigmau = sigmau1 + slope*(sigmau2 - sigmau1);
+        sigmav = sigmav1 + slope*(sigmav2 - sigmav1);
+    else
+        warning('Height is not in range for wind model');
     end
+    ug = exp(-v*dt/Lu)*ug0 + sigmau * sqrt(1 - exp(-2*v*dt/Lu)) * randn;
+    vg = exp(-v*dt/Lv)*vg0 + sigmav * sqrt(1 - exp(-2*v*dt/Lv)) * randn;
+    wg = exp(-v*dt/Lw)*wg0 + sigmaw * sqrt(1 - exp(-2*v*dt/Lw)) * randn;
 end
 
 fprintf('=== PART (c): Monte Carlo Trajectory Simulation Model ===\n');
@@ -227,6 +225,7 @@ fprintf('Running %d Monte Carlo simulations...\n', n_simulations);
 max_altitudes = zeros(n_simulations, 1);
 max_velocities = zeros(n_simulations, 1);
 max_accelerations = zeros(n_simulations, 1);
+max_wind_vels = zeros(n_simulations, 1);
 max_dynamic_pressure = zeros(n_simulations, 1);
 CG_samples = zeros(n_simulations, 1);
 CP_samples = zeros(n_simulations, 1);
@@ -263,6 +262,7 @@ for sim = 1:n_simulations
     x = zeros(n_time, 1);
     z = zeros(n_time, 1);
     vx = zeros(n_time, 1);
+    vy = zeros(n_time, 1);
     vz = zeros(n_time, 1);
     altitude = zeros(n_time, 1);
     velocity = zeros(n_time, 1);
@@ -270,9 +270,18 @@ for sim = 1:n_simulations
     gamma_vec = zeros(n_time, 1);
     dynamic_pressure = zeros(n_time, 1);
     
+    ugust = zeros(n_time, 1);
+    vgust = zeros(n_time, 1);
+    wgust = zeros(n_time, 1);
+    wind_vels = zeros(n_time, 1);
+    sigma_gust = 0.44704*31*rand; %rand wind speed - "light air" to "strong breeze"
+    %mph to m/s multiplied by 38mph multiplied by rand 
+    %source - www.weather.gov
+    
     x(1) = 0;
     z(1) = 0;
     vx(1) = Omega_earth * R_earth * cosd(latitude); 
+    vy(1) = 0;
     vz(1) = 0.1;
     m = m_total;
     
@@ -350,12 +359,21 @@ for sim = 1:n_simulations
         end
         
         altitude(i+1) = max(0, z(i+1));
+
+        [ug, vg, wg] = ...
+        wind_turb(altitude(i), sigma_gust, velocity(i), ugust(i), vgust(i), wgust(i), dt);
+
+        ugust(i+1) = ug;
+        vgust(i+1) = vg;
+        wgust(i+1) = wg;
+        wind_vels(i) = sqrt(ugust(i)^2 + vgust(i)^2 + wgust(i)^2);
     end
     
     max_altitudes(sim) = max(altitude);
     max_velocities(sim) = max(velocity);
     max_accelerations(sim) = max(acceleration);
     max_dynamic_pressure(sim) = max(dynamic_pressure);
+    max_wind_vels(sim) = max(wind_vels);
     
     if sim == 1
         time_ex = time_vec;
@@ -370,7 +388,8 @@ for sim = 1:n_simulations
         fprintf('  Max velocity: %.2f m/s\n', max(velocity));
         fprintf('  Max vz: %.2f m/s\n', max(vz));
         fprintf('  Burn ends at: %.1f s\n', burn_time);
-        fprintf('  T/W ratio: %.2f\n\n', thrust/(m_total*g0));
+        fprintf('  T/W ratio: %.2f\n', thrust/(m_total*g0));
+        fprintf('  Max wind speed: %.2f mph \n\n', max(wind_vels)/0.44704);
     end
     
     if mod(sim, progress_step) == 0
@@ -379,34 +398,35 @@ for sim = 1:n_simulations
 end
 fprintf(' Done!\n\n');
 
-sigma_gust = 0.44704*46*rand; 
-%mph to m/s multiplied by 46mph multiplied by rand 
-%gives random wind speed between "light air" to "gale"
-%source - www.weather.gov
-[ug, vg, wg] = wind_turb(altitude, sigma_gust, velocity, dt, t_max);
-
-vx = vx - ug;
-vy = -vg;
-vz = vz - wg;
-V = sqrt(vx.^2 + vy.^2 + vz.^2);
-velocity = V;
-
-wind_gust = sqrt(ug.^2 + vg.^2 + wg.^2);
-figure; grid on;
-subplot(2, 1, 1)
-plot(time_vec, wind_gust, 'b-', 'LineWidth', 2);
-ylabel('Wind Gust (m/s)');
+figure('Name', 'Part (b) Wind Gust using Altitude Input'); grid on;
+subplot(2, 2, 3)
+plot(time_vec, wind_vels, 'b.-', 'LineWidth', 0.5);
+ylabel('Wind Speeds (m/s)');
 xlabel('Time (s)');
-title('Wind Gust vs Time');
+title('Wind Speed Magnitude vs Time');
 
-subplot(2, 1, 2)
-plot(altitude, wind_gust, 'b-', 'LineWidth', 2);
-ylabel('Wind Gust (m/s)');
-xlabel('Altitude (m)');
-title('Wind Gust vs Altitude');
+subplot(2, 2, 1)
+plot(altitude/1000, wind_vels, 'm.-', 'LineWidth', 0.5);
+ylabel('Wind Speeds (m/s)');
+xlabel('Altitude (km)');
+title('Wind Speed vs Altitude');
 
-sigma_gust = sigma_gust/0.44704;
-sgtitle(sprintf('Part B: Wind Gusts \n \\sigma_{gust} = %.2f mph', sigma_gust));
+subplot(2, 2, 4); hold on;
+plot(time_vec, ugust, 'DisplayName', 'x comp');
+plot(time_vec, vgust, 'DisplayName', 'y comp');
+plot(time_vec, wgust, 'DisplayName', 'z comp');
+ylabel('Wind Speeds (m/s)');
+xlabel('Time (s)');
+title('Wind Speed Component vs Time');
+legend('Location', 'best');
+
+subplot(2, 2, 2);
+histogram(max_wind_vels, 50, 'FaceColor', [0.2 0.2 0.2]);
+xlabel('Wind Speeds (m/s)'); 
+ylabel('Frequency');
+title('Distribution of Maximum Wind Speed');
+
+sgtitle(sprintf('Part B: Wind Gusts \n \\sigma_{gust} = %.2f m/s', sigma_gust));
 
 
 fprintf('TRAJECTORY RESULTS:\n');
@@ -688,5 +708,4 @@ if unstable_count > 0
 else
     fprintf('  • STATUS: ✓ STABLE - No action needed\n');
 end
-
 fprintf('\n================================================================\n');
