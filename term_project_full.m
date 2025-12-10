@@ -1,8 +1,8 @@
 clear; clc; close all;
 
 loc = [0, 0.3, 0.7, 1.1, 1.2, 2.2, 2.3, 2.9, 3.1, 3.3, 3.4, 4, 4.2, 4.3, 4.9, 6, 6.5, 6.7, 6.9, 7.1, 7.6];
-mass = [0, 20, 25, 25, 20, 25, 70, 1, 10, 15, 1, 10, 120, 1, 50, 5, 1, 5, 5, 10, 10];
-dim = [1.2, 6.0, 0.7, 0.8, 1.2];
+mass = [0, 20, 25, 25, 20, 25, 70, 1, 10, 15, 1, 20, 120, 1, 50, 5, 1, 5, 5, 10, 10];
+dim = [1.2, 6.0, 0.8];
 
 tolerance_dim = 0.002;
 tolerance_mass = 0.1;
@@ -18,7 +18,7 @@ thrust = 15500;
 m_fuel = 120;
 Isp = 200;
 Cd = 0.35;
-diameter = 1.0;
+diameter = 0.4;
 A_ref = pi * (diameter/2)^2;
 
 fuel_tank_index = find(mass == 120, 1);
@@ -183,7 +183,7 @@ for sim = 1:n_simulations
         end
         
         r = R_earth + h;
-        g_grav = mu / (r^2);
+        g_grav = mu / (r^3);
         g_centripetal_x = Omega_earth^2 * r * cosd(latitude);
         
         V = sqrt(vx(i)^2 + vz(i)^2);
@@ -718,4 +718,5 @@ function [ug, vg, wg] = wind_turb(alt, sigma_gust, vel, ug0, vg0, wg0, dt)
     ug = phi_u * ug0 + sigma_noise_u * randn;
     vg = phi_v * vg0 + sigma_noise_v * randn;
     wg = phi_w * wg0 + sigma_noise_w * randn;
+
 end
