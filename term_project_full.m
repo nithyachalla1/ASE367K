@@ -1,8 +1,8 @@
 clear; clc; close all;
 
 loc = [0, 0.3, 0.7, 1.1, 1.2, 2.2, 2.3, 2.9, 3.1, 3.3, 3.4, 4, 4.2, 4.3, 4.9, 6, 6.5, 6.7, 6.9, 7.1, 7.6];
-mass = [0, 20, 25, 25, 20, 25, 70, 1, 10, 15, 1, 20, 120, 1, 50, 5, 1, 5, 5, 10, 10];
-dim = [1.2, 6.0, 0.8];
+mass = [0, 20, 25, 25, 20, 25, 70, 1, 10, 15, 1, 10, 120, 1, 50, 5, 1, 5, 5, 10, 10];
+dim = [1.2, 6.0, 0.7, 0.8, 1.2];
 
 tolerance_dim = 0.002;
 tolerance_mass = 0.1;
@@ -18,7 +18,7 @@ thrust = 15500;
 m_fuel = 120;
 Isp = 200;
 Cd = 0.35;
-diameter = 0.4;
+diameter = 1.0;
 A_ref = pi * (diameter/2)^2;
 
 fuel_tank_index = find(mass == 120, 1);
@@ -79,7 +79,7 @@ grid on;
 legend('CP', 'Uncertainty', 'Location', 'best');
 
 subplot(3,1,3)
-stability_margin = cp_vals - cg_vals(1);
+stability_margin = cg_vals(1) - cp_vals;
 margin_uncertainty = sqrt(cp_err.^2 + cg_err(1)^2);
 hold on;
 plot(alphas, stability_margin, 'g-', 'LineWidth', 2);
@@ -143,7 +143,7 @@ for sim = 1:n_simulations
     total_mass_varied = sum(mass_varied);
     [CG_samples(sim), ~] = center_of_gravity(mass_varied, loc, 0, 0);
     [CP_samples(sim), ~] = center_of_pressure(dim_varied);
-    stability_margins(sim) = CP_samples(sim) - CG_samples(sim);
+    stability_margins(sim) = CG_samples(sim) - CP_samples(sim);
     
     m_total = total_mass_varied;
     
@@ -183,7 +183,7 @@ for sim = 1:n_simulations
         end
         
         r = R_earth + h;
-        g_grav = mu / (r^3);
+        g_grav = mu / (r^2);
         g_centripetal_x = Omega_earth^2 * r * cosd(latitude);
         
         V = sqrt(vx(i)^2 + vz(i)^2);
@@ -441,7 +441,7 @@ for sim = 1:n_stability_sims
         mass_current(fuel_tank_index) = fuel_levels(step);
         [CG_sim, ~] = center_of_gravity(mass_current, loc, 0, 0);
         CG_trajectory(step) = CG_sim;
-        stability_margin_sim(step) = CP_sim - CG_sim;
+        stability_margin_sim(step) = CG_sim - CP_sim;
     end
     
     min_margin = min(stability_margin_sim);
@@ -519,8 +519,8 @@ fprintf('  Target Altitude: %.0f km\n\n', target_altitude/1000);
 fprintf('PART (a) - Static Analysis:\n');
 fprintf('  CG (full): %.4f ± %.4f m\n', CG_nominal, CG_uncertainty);
 fprintf('  CP: %.4f ± %.4f m\n', CP_nominal, CP_uncertainty);
-fprintf('  Margin: %.4f m (%.1f calibers)\n', CP_nominal - CG_nominal, (CP_nominal - CG_nominal)/diameter);
-fprintf('  Status: %s\n\n', ternary(CP_nominal > CG_nominal, 'STABLE', 'UNSTABLE'));
+fprintf('  Margin: %.4f m (%.1f calibers)\n', CG_nominal - CP_nominal, (CG_nominal - CP_nominal)/diameter);
+fprintf('  Status: %s\n\n', ternary(CP_nominal < CG_nominal, 'STABLE', 'UNSTABLE'));
 
 fprintf('PART (b) - Wind Turbulence:\n');
 fprintf('  Model: Dryden (altitude-dependent)\n');
@@ -535,7 +535,6 @@ fprintf('  Altitude range: [%.2f, %.2f] km\n', min(max_altitudes)/1000, max(max_
 fprintf('  Mean velocity: %.2f m/s (Mach %.2f)\n', mean(max_velocities), mean(max_velocities)/340);
 fprintf('  Max acceleration: %.2f g\n', max(max_accelerations)/g0);
 fprintf('  Max dynamic pressure: %.2f kPa\n', max(max_dynamic_pressure)/1000);
-fprintf('  Performance: %s\n\n', ternary(mean(max_altitudes) >= target_altitude, 'EXCEEDS TARGET', 'BELOW TARGET'));
 
 fprintf('PART (d) - Stability During Burn (%d sims):\n', n_stability_sims);
 fprintf('  CG shift: %.4f m forward\n', CG_nominal - CG_empty);
@@ -545,7 +544,7 @@ fprintf('  Instability rate: %.2f%%\n', instability_rate);
 fprintf('  Status: %s\n\n', ternary(unstable_count == 0, 'STABLE THROUGHOUT', 'UNSTABLE - NEEDS REDESIGN'));
 
 fprintf('FINAL VERDICT:\n');
-if unstable_count == 0 && CP_nominal > CG_nominal
+if unstable_count == 0 && CP_nominal < CG_nominal
     fprintf('  ✓ DESIGN APPROVED\n');
     fprintf('  ✓ Rocket is statically stable\n');
     fprintf('  ✓ Remains stable during fuel consumption\n');
@@ -718,5 +717,4 @@ function [ug, vg, wg] = wind_turb(alt, sigma_gust, vel, ug0, vg0, wg0, dt)
     ug = phi_u * ug0 + sigma_noise_u * randn;
     vg = phi_v * vg0 + sigma_noise_v * randn;
     wg = phi_w * wg0 + sigma_noise_w * randn;
-
 end
