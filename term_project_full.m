@@ -31,7 +31,7 @@ fprintf('================================================================\n\n');
 fprintf('=== PART (a): CG and CP with Uncertainty ===\n\n');
 
 [CG_nominal, CG_uncertainty] = center_of_gravity(mass, loc, tolerance_mass, tolerance_dim);
-[CP_nominal, CP_uncertainty] = center_of_pressure(dim, tolerance_dim);
+[CP_nominal, CP_uncertainty] = center_of_pressure(tolerance_dim);
 
 mass_empty = mass;
 mass_empty(fuel_tank_index) = 0;
@@ -54,7 +54,7 @@ cp_err = zeros(size(alphas));
 
 for i = 1:length(alphas)
     [cg_vals(i), cg_err(i)] = center_of_gravity(mass, loc, tolerance_mass, tolerance_dim);
-    [cp_vals(i), cp_err(i)] = center_of_pressure(dim, tolerance_dim);
+    [cp_vals(i), cp_err(i)] = center_of_pressure(tolerance_dim);
 end
 
 figure('Name', 'Part (a) - CG and CP vs AoA', 'Position', [50 50 1200 800]);
@@ -142,7 +142,7 @@ for sim = 1:n_simulations
     
     total_mass_varied = sum(mass_varied);
     [CG_samples(sim), ~] = center_of_gravity(mass_varied, loc, 0, 0);
-    [CP_samples(sim), ~] = center_of_pressure(dim_varied, 0);
+    [CP_samples(sim), ~] = center_of_pressure(dim_varied);
     stability_margins(sim) = CP_samples(sim) - CG_samples(sim);
     
     m_total = total_mass_varied;
@@ -430,7 +430,7 @@ for sim = 1:n_stability_sims
     mass_varied = mass + (tolerance_mass/3) * randn(size(mass));
     mass_varied(mass_varied < 0) = 0;
     
-    [CP_sim, ~] = center_of_pressure(dim_varied, 0);
+    [CP_sim, ~] = center_of_pressure(dim_varied);
     
     fuel_levels = linspace(m_fuel, 0, n_fuel_steps);
     stability_margin_sim = zeros(n_fuel_steps, 1);
@@ -585,45 +585,52 @@ function [cg, cg_uncertainty] = center_of_gravity(mass, location, mass_tol, loca
     cg_uncertainty = sqrt(cg_variance);
 end
 
-function [cp, cp_uncertainty] = center_of_pressure(dim, dim_tol)
-    Ln = dim(1);
-    d = 1.0;
-    Xb = sum(dim) - 0.15;
-    Xr = 0.1;
-    Cr = 0.3;
-    Ct = 0.2;
-    S = 0.15;
-    Lf = 0.25;
-    R = 0.5;
-    N = 4;
-    
-    CN_nose = 2;
-    X_nose = 0.666 * Ln;
-    
-    CN_fin = (1 + (R/(S+R))) * ((4*N*(S/d)^2)/(1+sqrt(1+(2*Lf/(Cr+Ct))^2)));
-    X_fin = Xb + (Xr/3)*(Cr + 2*Ct)/(Cr+Ct) + (1/6)*((Cr+Ct)-((Cr*Ct)/(Cr+Ct)));
-    
-    cp = (CN_nose*X_nose + CN_fin*X_fin) / (CN_nose + CN_fin);
-    
-    delta = 1e-6;
-    n_dim = length(dim);
-    dcp = zeros(n_dim, 1);
-    
-    for k = 1:n_dim
-        dim_pert = dim;
-        dim_pert(k) = dim_pert(k) + delta;
-        Ln_p = dim_pert(1);
-        Xb_p = sum(dim_pert) - 0.15;
-        X_nose_p = 0.666 * Ln_p;
-        X_fin_p = Xb_p + (Xr/3)*(Cr + 2*Ct)/(Cr+Ct) + (1/6)*((Cr+Ct)-((Cr*Ct)/(Cr+Ct)));
-        cp_pert = (CN_nose*X_nose_p + CN_fin*X_fin_p) / (CN_nose + CN_fin);
-        dcp(k) = (cp_pert - cp) / delta;
-    end
-    
-    cp_variance = sum((dcp * dim_tol).^2);
-    cp_uncertainty = sqrt(cp_variance);
-end
+function [cp, cp_uncertainty] = center_of_pressure(location_tol)
+    Ln = 1.2;      
+    d = 0.4;
+    Xb = 6.0;       
+    Xr = 0.0;       
+    Cr = 0.8;       
+    Ct = 0.7;      
+    S  = 0.2;       
+    Lf = 0.2;       
+    R  = 0.2;       
+    N  = 2;    
 
+    CN_nose = 2;
+    X_nose = 0.666*Ln;
+
+    CN_fin = (1 + (R/(S+R)))*((4*N*(S/d)^2)/(1+sqrt(1+(2*Lf/(Cr+Ct))^2)));
+    X_fin = Xb + (Xr/3)*(Cr + 2*Ct)/(Cr+Ct) + (1/6)*((Cr+Ct)-((Cr*Ct)/(Cr+Ct)));
+
+    cp = ((CN_nose*X_nose) + (CN_fin*X_fin))/(CN_nose + CN_fin);
+
+    vars = {Ln, d, Cr, Ct, S, Lf, R, Xr, Xb};
+    delta = 1e-6;
+    nVars = numel(vars);
+    dcp = zeros(nVars,1);
+
+    function out = CP_eval(Ln_, d_, Cr_, Ct_, S_, Lf_, R_, Xr_, Xb_)
+        CNn = 2;
+        Xn_ = 0.666 * Ln_;
+        CNf_ = (1 + R_/(S_+R_)) * ...
+               ( (4*N*(S_/d_)^2) / (1 + sqrt(1 + (2*Lf_/(Cr_+Ct_))^2)) );
+        Xf_ = Xb_ + (Xr_/3) * (Cr_ + 2*Ct_)/(Cr_ + Ct_) + ...
+               (1/6) * ((Cr_ + Ct_) - (Cr_*Ct_)/(Cr_ + Ct_));
+        out = (CNn*Xn_ + CNf_*Xf_) / (CNn + CNf_);
+    end
+
+    base_cp = cp;
+    for k = 1:nVars
+        pert = vars;
+        pert{k} = pert{k} + delta;
+        dcp(k) = ( CP_eval(pert{:}) - base_cp ) / delta;
+    end
+
+    cp_variance = sum( (dcp * location_tol).^2 );
+    cp_uncertainty = sqrt(cp_variance);
+
+end
 function [ug, vg, wg] = wind_turb(alt, sigma_gust, vel, ug0, vg0, wg0, dt)
     alt_ft = alt / 0.3048;
     vel_ft = vel / 0.3048;
