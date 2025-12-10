@@ -57,7 +57,7 @@ for i = 1:length(alphas)
     [cp_vals(i), cp_err(i)] = center_of_pressure(tolerance_dim);
 end
 
-figure('Name', 'Part (a) - CG and CP vs AoA', 'Position', [50 50 1200 800]);
+fig1 = figure('Name', 'Part (a) - CG and CP vs AoA', 'Position', [50 50 1200 800]);
 subplot(3,1,1)
 hold on;
 plot(alphas, cg_vals, 'b-', 'LineWidth', 2);
@@ -92,7 +92,7 @@ ylabel('Stability Margin (m)', 'FontSize', 12);
 title('Static Stability Margin vs Angle of Attack', 'FontSize', 14);
 grid on;
 legend('Margin', 'Uncertainty', 'Neutral', 'Location', 'best');
-
+saveas(fig1, 'Part_a_CG_CP_Analysis.png');
 
 m0 = total_mass_nom;
 m1 = m0 - m_fuel;
@@ -191,12 +191,18 @@ for sim = 1:n_simulations
         V = sqrt(vx(i)^2 + vz(i)^2);
         velocity(i) = V;
         
+        Vx_fs = vx(i) - ugust(i);
+        Vy_fs = vgust(i);
+        Vz_fs = vz(i) - wgust(i);
+
+        V_fs = sqrt(Vx_fs^2 + Vy_fs^2 + Vz_fs^2);
+
         if V > 0.1
             gamma_rad = atan2(vz(i), vx(i));
         end
         gamma_vec(i) = gamma_rad * 180/pi;
         
-        dynamic_pressure(i) = 0.5 * rho * V^2;
+        dynamic_pressure(i) = 0.5 * rho * V_fs^2;
         
         if t <= burn_time
             thrust_angle = pi/2;
@@ -210,8 +216,8 @@ for sim = 1:n_simulations
         end
         
         if V > 0.1
-            F_drag_x = -0.5 * rho * V * vx(i) * Cd * A_ref;
-            F_drag_z = -0.5 * rho * V * vz(i) * Cd * A_ref;
+            F_drag_x = -0.5 * rho * V_fs * vx(i) * Cd * A_ref;
+            F_drag_z = -0.5 * rho * V_fs * vz(i) * Cd * A_ref;
         else
             F_drag_x = 0;
             F_drag_z = 0;
@@ -307,7 +313,8 @@ fprintf('  Wind Speed:\n');
 fprintf('    Mean max: %.2f m/s (%.1f mph)\n', mean(max_wind_vels), mean(max_wind_vels)/0.44704);
 fprintf('    Range: [%.2f, %.2f] m/s\n\n', min(max_wind_vels), max(max_wind_vels));
 
-figure('Name', 'Part (b) - Wind Turbulence', 'Position', [50 50 1400 900]);
+
+fig2 = figure('Name', 'Part (b) - Wind Turbulence', 'Position', [50 50 1400 900]);
 subplot(2, 2, 1)
 plot(alt_ex/1000, wind_ex, 'm-', 'LineWidth', 1.5);
 ylabel('Wind Speed (m/s)');
@@ -340,8 +347,9 @@ legend('Location', 'best');
 grid on;
 
 sgtitle(sprintf('Dryden Wind Turbulence Model (\\sigma_{gust} = %.2f m/s)', sigma_ex));
+saveas(fig2, 'Part_b_Winds_Analysis.png');
 
-figure('Name', 'Part (c) - Monte Carlo Trajectory Results', 'Position', [50 50 1400 900]);
+fig3 = figure('Name', 'Part (c) - Monte Carlo Trajectory Results', 'Position', [50 50 1400 900]);
 
 subplot(3,3,1);
 histogram(max_altitudes/1000, 50, 'FaceColor', [0.2 0.4 0.8], 'EdgeColor', 'none');
@@ -415,6 +423,8 @@ ylabel('Altitude (km)');
 title('Trajectory - q vs Altitude');
 grid on;
 
+saveas(fig3, 'Part_c_MonteCarlo_Analysis.png');
+
 fprintf('=== PART (d): Stability Analysis During Fuel Consumption ===\n');
 fprintf('Tracking CG movement as fuel burns\n\n');
 
@@ -481,7 +491,7 @@ else
     fprintf('  No ballast weight needed.\n\n');
 end
 
-figure('Name', 'Part (d) - Stability During Ascent', 'Position', [100 100 1400 600]);
+fig4 = figure('Name', 'Part (d) - Stability During Ascent', 'Position', [100 100 1400 600]);
 
 subplot(1,2,1);
 hold on;
@@ -498,13 +508,14 @@ grid on;
 subplot(1,2,2);
 histogram(min_margins_all_sims, 50, 'FaceColor', [0.3 0.6 0.8], 'EdgeColor', 'none');
 hold on;
-xline(0, 'r--', 'LineWidth', 2.5, 'Label', 'Unstable');
-xline(mean(min_margins_all_sims), 'b--', 'LineWidth', 2, 'Label', 'Mean');
+xline(0, 'r--', 'LineWidth', 2.5, 'Label', 'Unstable', 'DisplayName', 'Unstable');
+xline(mean(min_margins_all_sims), 'b--', 'LineWidth', 2, 'Label', 'Mean', 'DisplayName', 'Mean');
 xlabel('Minimum Stability Margin (m)', 'FontSize', 12);
 ylabel('Frequency', 'FontSize', 12);
 title('Distribution of Minimum Stability Margins', 'FontSize', 14);
 grid on;
 legend('Location', 'best');
+saveas(fig4, 'Part_c_Stability_Analysis.png');
 
 fprintf('================================================================\n');
 fprintf('                    FINAL SUMMARY REPORT                        \n');
