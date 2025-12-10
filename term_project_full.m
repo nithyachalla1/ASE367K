@@ -185,7 +185,7 @@ for sim = 1:n_simulations
         end
         
         r = R_earth + h;
-        g_grav = mu / (r^3);
+        g_grav = mu / (r^2);
         g_centripetal_x = Omega_earth^2 * r * cosd(latitude);
         
         V = sqrt(vx(i)^2 + vz(i)^2);
@@ -702,3 +702,4 @@ function [ug, vg, wg] = wind_turb(alt, w20, vel, ug0, vg0, wg0, dt)
     vg = exp(-v*dt/Lv)*vg0 + sigmav * sqrt(1 - exp(-2*v*dt/Lv)) * randn;
     wg = exp(-v*dt/Lw)*wg0 + sigmaw * sqrt(1 - exp(-2*v*dt/Lw)) * randn;
 end
+
