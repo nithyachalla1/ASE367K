@@ -161,7 +161,9 @@ for sim = 1:n_simulations
     vgust = zeros(n_time, 1);
     wgust = zeros(n_time, 1);
     wind_vels = zeros(n_time, 1);
-    sigma_gust = 0.44704 * 31 * rand;
+    w20 = 0.514*[15, 30, 45];
+    idx_w20 = randi(length(w20));
+    w20_sim = w20(idx_w20);
     
     x(1) = 0;
     z(1) = 0;
@@ -249,12 +251,12 @@ for sim = 1:n_simulations
         
         altitude(i+1) = max(0, z(i+1));
         
-        [ug, vg, wg] = wind_turb(altitude(i), sigma_gust, velocity(i), ...
+        [ug, vg, wg] = wind_turb(altitude(i), w20_sim, velocity(i), ...
                                   ugust(i), vgust(i), wgust(i), dt);
         ugust(i+1) = ug;
         vgust(i+1) = vg;
         wgust(i+1) = wg;
-        wind_vels(i) = sqrt(ugust(i)^2 + vgust(i)^2 + wgust(i)^2);
+        wind_vels(i+1) = sqrt(ugust(i+1)^2 + vgust(i+1)^2 + wgust(i+1)^2);
     end
     
     max_altitudes(sim) = max(altitude);
@@ -274,7 +276,7 @@ for sim = 1:n_simulations
         ugust_ex = ugust;
         vgust_ex = vgust;
         wgust_ex = wgust;
-        sigma_ex = sigma_gust;
+        sigma_ex = 0.1*w20_sim;
     end
     
     if mod(sim, progress_step) == 0
@@ -307,7 +309,7 @@ fprintf('    Range: [%.2f, %.2f] m/s\n\n', min(max_wind_vels), max(max_wind_vels
 
 figure('Name', 'Part (b) - Wind Turbulence', 'Position', [50 50 1400 900]);
 subplot(2, 2, 1)
-plot(alt_ex, wind_ex, 'm-', 'LineWidth', 1.5);
+plot(alt_ex/1000, wind_ex, 'm-', 'LineWidth', 1.5);
 ylabel('Wind Speed (m/s)');
 xlabel('Altitude (km)');
 title('Wind Speed vs Altitude');
@@ -337,7 +339,7 @@ title('Wind Components vs Time');
 legend('Location', 'best');
 grid on;
 
-sgtitle(sprintf('Dryden Wind Turbulence Model (\\sigma_{gust} = %.2f ft/s)', sigma_ex));
+sgtitle(sprintf('Dryden Wind Turbulence Model (\\sigma_{gust} = %.2f m/s)', sigma_ex));
 
 figure('Name', 'Part (c) - Monte Carlo Trajectory Results', 'Position', [50 50 1400 900]);
 
@@ -629,8 +631,8 @@ function [cp, cp_uncertainty] = center_of_pressure(location_tol)
     cp_variance = sum( (dcp * location_tol).^2 );
     cp_uncertainty = sqrt(cp_variance);
 
-end
-function [ug, vg, wg] = wind_turb(alt, sigma_gust, vel, ug0, vg0, wg0, dt)
+end 
+function [ug, vg, wg] = wind_turb(alt, w20, vel, ug0, vg0, wg0, dt)
     alt_ft = alt / 0.3048;
     vel_ft = vel / 0.3048;
     
@@ -640,6 +642,7 @@ function [ug, vg, wg] = wind_turb(alt, sigma_gust, vel, ug0, vg0, wg0, dt)
     v = max(v, 1.0);
     h = max(h, 25);
     
+    sigma_gust = 0.1 * w20;
     if h <= 1000
         Lw = h;
         Lu = h / (0.177 + 0.000823*h)^1.2;
@@ -653,7 +656,7 @@ function [ug, vg, wg] = wind_turb(alt, sigma_gust, vel, ug0, vg0, wg0, dt)
         Lu = 1750;
         Lv = 1750;
         h_ref = 2000;
-        sigmaw = sigma_gust * exp(-(h - h_ref)/10000);
+        sigmaw = sigma_gust * exp(-(h - h_ref)/1e6);
         sigmau = sigmaw;
         sigmav = sigmaw;
         
@@ -684,38 +687,7 @@ function [ug, vg, wg] = wind_turb(alt, sigma_gust, vel, ug0, vg0, wg0, dt)
         sigmav = sigmav1 + slope * (sigmav2 - sigmav1);
     end
     
-    beta_u = v * dt / Lu;
-    beta_v = v * dt / Lv;
-    beta_w = v * dt / Lw;
-    
-    beta_u = min(beta_u, 0.99);
-    beta_v = min(beta_v, 0.99);
-    beta_w = min(beta_w, 0.99);
-    
-    phi_u = exp(-beta_u);
-    phi_v = exp(-beta_v);
-    phi_w = exp(-beta_w);
-    
-    if beta_u < 0.01
-        sigma_noise_u = sigmau * sqrt(2 * beta_u);
-    else
-        sigma_noise_u = sigmau * sqrt(max(0, 1 - exp(-2*beta_u)));
-    end
-    
-    if beta_v < 0.01
-        sigma_noise_v = sigmav * sqrt(2 * beta_v);
-    else
-        sigma_noise_v = sigmav * sqrt(max(0, 1 - exp(-2*beta_v)));
-    end
-    
-    if beta_w < 0.01
-        sigma_noise_w = sigmaw * sqrt(2 * beta_w);
-    else
-        sigma_noise_w = sigmaw * sqrt(max(0, 1 - exp(-2*beta_w)));
-    end
-    
-    ug = phi_u * ug0 + sigma_noise_u * randn;
-    vg = phi_v * vg0 + sigma_noise_v * randn;
-    wg = phi_w * wg0 + sigma_noise_w * randn;
-
+    ug = exp(-v*dt/Lu)*ug0 + sigmau * sqrt(1 - exp(-2*v*dt/Lu)) * randn;
+    vg = exp(-v*dt/Lv)*vg0 + sigmav * sqrt(1 - exp(-2*v*dt/Lv)) * randn;
+    wg = exp(-v*dt/Lw)*wg0 + sigmaw * sqrt(1 - exp(-2*v*dt/Lw)) * randn;
 end
